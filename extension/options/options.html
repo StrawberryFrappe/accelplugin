@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HW Accel Toggler settings</title>
+  <link rel="stylesheet" href="../ui.css">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main>
+    <h1>HW Accel Toggler</h1>
+
+    <section>
+      <h2>Sites</h2>
+      <p class="muted">Opening one of these asks you to turn hardware acceleration off. Subdomains are included.</p>
+      <ul id="domains"></ul>
+      <form id="addForm" class="row">
+        <input type="text" id="newDomain" placeholder="e.g. disneyplus.com" autocomplete="off" aria-label="Domain to add">
+        <button class="primary" type="submit">Add</button>
+      </form>
+      <p id="domainMsg" class="err" hidden></p>
+    </section>
+
+    <section>
+      <h2>Turning it back on</h2>
+      <label class="row check"><input type="checkbox" id="autoEnable"> Turn hardware acceleration back on automatically</label>
+      <label class="row field">
+        <span>After no listed site has been the active tab for</span>
+        <span><input type="number" id="timeoutMinutes" min="1" max="1440"> min</span>
+      </label>
+      <label class="row field">
+        <span>Warn before restarting<br><span class="faint">0 restarts without warning</span></span>
+        <span><input type="number" id="warningSeconds" min="0" max="600"> s</span>
+      </label>
+      <p id="saved" class="ok faint" hidden>Saved</p>
+    </section>
+
+    <section>
+      <h2>Helper</h2>
+      <div class="panel">
+        <div class="row">
+          <span id="helperStatus">Checking…</span>
+          <button class="ghost" id="test">Test helper</button>
+        </div>
+        <pre id="helperDetails" class="faint" hidden></pre>
+      </div>
+      <p class="faint">Extension ID: <code id="extId"></code></p>
+    </section>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

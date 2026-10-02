@@ -1,0 +1,48 @@
+/* Shared styles for the popup and options pages. */
+:root {
+  color-scheme: dark;
+  --bg: #17161d;
+  --panel: #201f28;
+  --line: #2c2a36;
+  --text: #ececf1;
+  --muted: #a9a7b6;
+  --faint: #77758a;
+  --accent: #fa1e4e;
+  --accent-hi: #ff3b66;
+  --ok: #3ddc97;
+  --err: #ff8197;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+h1 { font-size: 15px; margin: 0; font-weight: 600; }
+h2 { font-size: 13px; margin: 0 0 8px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+a { color: var(--muted); }
+a:hover { color: var(--text); }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); font-size: 11.5px; }
+.panel { background: var(--panel); border-radius: 8px; padding: 10px 12px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.err { color: var(--err); }
+.ok { color: var(--ok); }
+[hidden] { display: none !important; }
+
+button { font: inherit; cursor: pointer; border: 0; border-radius: 6px; padding: 7px 12px; font-weight: 600; font-size: 12.5px; }
+button.primary { background: var(--accent); color: #fff; }
+button.primary:hover { background: var(--accent-hi); }
+button.ghost { background: transparent; color: var(--muted); }
+button.ghost:hover { background: #24232c; color: var(--text); }
+button:disabled { opacity: .5; pointer-events: none; }
+input[type="text"], input[type="number"] {
+  font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 8px;
+}
+input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.switch { position: relative; width: 38px; height: 22px; flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.track { position: absolute; inset: 0; border-radius: 11px; background: #3a3846; transition: background .15s; pointer-events: none; }
+.track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.switch input:checked + .track { background: var(--accent); }
+.switch input:checked + .track::after { transform: translateX(16px); }
+.switch input:disabled + .track { opacity: .4; }
+.switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }

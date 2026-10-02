@@ -1,0 +1,10 @@
+main { max-width: 560px; margin: 0 auto; padding: 32px 16px 48px; display: grid; gap: 28px; }
+section p { margin: 0 0 10px; }
+ul { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+li { display: flex; align-items: center; justify-content: space-between; background: var(--panel); border-radius: 6px; padding: 6px 6px 6px 12px; }
+#addForm input { flex: 1; }
+.check { justify-content: flex-start; margin-bottom: 10px; }
+.field { padding: 8px 0; border-top: 1px solid var(--line); }
+.field input { width: 76px; text-align: right; }
+pre { white-space: pre-wrap; word-break: break-all; margin: 10px 0 0; font-size: 11.5px; }
+code { user-select: all; }

@@ -1,0 +1,4 @@
+*.pem
+node_modules/
+native-host/config.json
+native-host/com.accelplugin.hwaccel.json

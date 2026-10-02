@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HW Accel Toggler</title>
+  <link rel="stylesheet" href="../ui.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="row">
+    <h1>HW Accel Toggler</h1>
+    <a href="#" id="options" title="Settings">Settings</a>
+  </header>
+
+  <label class="panel row setting">
+    <span>Use hardware acceleration<small id="state" class="faint">Checking…</small></span>
+    <span class="switch"><input type="checkbox" id="toggle" disabled><span class="track"></span></span>
+  </label>
+
+  <div class="actions">
+    <button class="primary" id="restart" disabled>Restart browser</button>
+    <button class="ghost" id="setting">Open setting</button>
+  </div>
+
+  <div class="panel" id="auto" hidden>
+    <div id="autoText"></div>
+    <button class="ghost" id="postpone" hidden>Postpone</button>
+  </div>
+
+  <p id="msg" hidden></p>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

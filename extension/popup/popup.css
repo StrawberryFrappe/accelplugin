@@ -1,0 +1,6 @@
+body { width: 300px; padding: 14px; display: grid; gap: 12px; }
+header a { font-size: 12px; }
+.setting small { display: block; }
+.actions { display: flex; gap: 8px; }
+#auto { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); }
+#msg { margin: 0; font-size: 12px; }
