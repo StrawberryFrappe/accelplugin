@@ -1,3 +1,6 @@
+import { ext } from '../lib/ext.js';
+import { currentBrowserName } from '../lib/browser.js';
+
 const $ = (id) => document.getElementById(id);
 const toggle = $('toggle');
 const restartBtn = $('restart');
@@ -7,7 +10,7 @@ let ticker = null;
 let renderedAt = Date.now();
 
 async function send(type, extra = {}) {
-  const res = await chrome.runtime.sendMessage({ type, ...extra });
+  const res = await ext.runtime.sendMessage({ type, ...extra });
   if (!res?.ok) throw new Error(res?.error || 'Extension did not respond.');
   return res.result;
 }
@@ -59,6 +62,7 @@ function render() {
     toggle.disabled = restartBtn.disabled = false;
     const pendingNote = hw.pending !== hw.enabled ? ` (${hw.pending ? 'on' : 'off'} after restart)` : '';
     $('state').textContent = `Currently ${on ? 'on' : 'off'}${pendingNote}`;
+    if (hw.warning) showMsg(hw.warning, true);
     syncButton();
   }
   renderAuto();
@@ -79,7 +83,7 @@ toggle.addEventListener('change', syncButton);
 
 restartBtn.addEventListener('click', async () => {
   restartBtn.disabled = toggle.disabled = true;
-  showMsg('Restarting Opera GX… your tabs will come back.');
+  showMsg(`Restarting ${currentBrowserName}… your tabs will come back.`);
   try {
     await send('applyAndRestart', { enabled: toggle.checked });
   } catch (e) {
@@ -88,14 +92,18 @@ restartBtn.addEventListener('click', async () => {
   }
 });
 
-$('setting').addEventListener('click', () => send('openSetting').catch((e) => showMsg(e.message, true)));
+$('setting').addEventListener('click', () =>
+  send('openSetting')
+    .then((r) => !r.opened && showMsg(r.hint))
+    .catch((e) => showMsg(e.message, true)),
+);
 $('postpone').addEventListener('click', async () => {
   await send('postpone').catch((e) => showMsg(e.message, true));
   load(false);
 });
 $('options').addEventListener('click', (e) => {
   e.preventDefault();
-  chrome.runtime.openOptionsPage();
+  ext.runtime.openOptionsPage();
 });
 
 load(false).then(() => load(true));

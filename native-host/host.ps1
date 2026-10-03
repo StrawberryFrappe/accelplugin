@@ -1,5 +1,5 @@
 # Native messaging host for the HW Accel Toggler extension.
-# Opera starts this (through host.bat) for each message; it answers once and exits.
+# The browser starts this (through host.bat) for each message; it answers once and exits.
 # Protocol: 4-byte little-endian length + UTF-8 JSON, on stdin/stdout.
 # Nothing else may be written to stdout.
 
@@ -38,7 +38,7 @@ function Write-NativeMessage($Obj) {
     $stdout.Flush()
 }
 
-# Start a process outside of Opera's process tree so it survives Opera closing.
+# Start a process outside of the browser's process tree so it survives the browser closing.
 function Start-Detached([string]$CommandLine) {
     try {
         $startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }
@@ -57,38 +57,47 @@ function Start-Detached([string]$CommandLine) {
 }
 
 function Invoke-HostCommand($Msg) {
+    $config = Get-AccelConfig
     switch ($Msg.cmd) {
         'getState' {
-            $cfg = Get-AccelConfig
-            $s = Read-HwAccelState $cfg.localState
-            return @{ ok = $true; running = $s.running; pending = $s.pending; localState = $cfg.localState }
+            $id = Resolve-CallingBrowser $config $Msg.browser
+            $b = $config[$id]
+            $s = Read-BrowserHwState $b.def $b.settings
+            $reply = @{ ok = $true; browser = $id; browserName = $b.def.name; running = $s.running; pending = $s.pending; settings = $b.settings }
+            if ($s.warning) { $reply.warning = $s.warning }
+            return $reply
         }
         'apply' {
             if ($Msg.enabled -isnot [bool]) { throw "'enabled' must be true or false." }
-            $cfg = Get-AccelConfig
-            $state = Read-HwAccelState $cfg.localState
-            $launcher = Get-GxLauncher $cfg.installDir
-            if (-not $launcher) { throw 'Could not find the Opera GX install folder. Re-run native-host\install.bat.' }
-            $browserPids = @(Get-GxBrowserProcesses $cfg.installDir | ForEach-Object { $_.ProcessId })
-            if (-not $browserPids.Count) { throw "No running Opera GX found under '$($cfg.installDir)'." }
+            $id = Resolve-CallingBrowser $config $Msg.browser
+            $b = $config[$id]
+            $def = $b.def
+            $state = Read-BrowserHwState $def $b.settings
+            $launcher = Get-BrowserLauncher $def $b.installDir
+            if (-not $launcher) { throw "Could not find the $($def.name) install folder. Re-run native-host\install.bat." }
+            $mainPids = @(Get-BrowserMainProcesses $def $b.installDir | ForEach-Object { $_.ProcessId })
+            if (-not $mainPids.Count) { throw "No running $($def.name) found under '$($b.installDir)'." }
 
             $info = @{
                 ok = $true
-                installDir = $cfg.installDir
+                browser = $id
+                browserName = $def.name
+                installDir = $b.installDir
                 launcher = $launcher
-                localState = $cfg.localState
-                browserPids = $browserPids
+                settings = $b.settings
+                browserPids = $mainPids
                 running = $state.running
                 pending = $state.pending
             }
+            if ($state.warning) { $info.warning = $state.warning }
             if ($Msg.dryRun) { $info.dryRun = $true; return $info }
 
             $mode = if ($Msg.enabled) { 'enable' } else { 'disable' }
             $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
             $worker = Join-Path $PSScriptRoot 'apply.ps1'
-            $cmd = "`"$powershell`" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$worker`" -Mode $mode -InstallDir `"$($cfg.installDir)`" -LocalState `"$($cfg.localState)`""
+            $cmd = "`"$powershell`" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$worker`" -Browser $id -Mode $mode -InstallDir `"$($b.installDir)`" -SettingsPath `"$($b.settings)`""
             $info.workerPid = Start-Detached $cmd
-            Write-AccelLog "host: started worker pid=$($info.workerPid) mode=$mode"
+            Write-AccelLog "host: started worker pid=$($info.workerPid) browser=$id mode=$mode"
             return $info
         }
         default { throw "Unknown command '$($Msg.cmd)'." }

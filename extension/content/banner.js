@@ -14,8 +14,9 @@
     return;
   }
 
+  const ext = globalThis.browser ?? globalThis.chrome;
   const send = (type, extra = {}) =>
-    chrome.runtime.sendMessage({ type, ...extra }).then((res) => {
+    ext.runtime.sendMessage({ type, ...extra }).then((res) => {
       if (!res?.ok) throw new Error(res?.error || 'Extension did not respond.');
       return res.result;
     });
@@ -80,7 +81,7 @@
         <h1>Turn off hardware acceleration?</h1>
         <button class="x" data-act="close" title="Close" aria-label="Close">×</button>
       </div>
-      <p class="intro">This site is on your list. Switch the setting off, then restart Opera GX to apply it.</p>
+      <p class="intro">This site is on your list. Switch the setting off, then restart the browser to apply it.</p>
       <div class="setting" data-act="toggle">
         <span>Use hardware acceleration when available<small class="state">Checking…</small></span>
         <button class="switch" role="switch" aria-checked="true" aria-disabled="true" data-act="toggle"
@@ -102,6 +103,7 @@
   let current = null; // running state reported by the helper
   let wanted = true; // what the switch shows
   let busy = true; // switch and restart are inactive until status loads
+  let browserName = 'the browser';
 
   function setBusy(value) {
     busy = value;
@@ -141,6 +143,7 @@
     try {
       const status = await send('getStatus');
       const { hw } = status;
+      browserName = status.browserName || browserName;
       if (status.restarting) {
         stateEl.textContent = 'Restart in progress…';
         return;
@@ -165,12 +168,16 @@
       remove();
       return send('snooze').catch(() => {});
     }
-    if (act === 'setting') return send('openSetting').catch((e) => showMsg(e.message, true));
+    if (act === 'setting') {
+      return send('openSetting')
+        .then((r) => !r.opened && showMsg(r.hint))
+        .catch((e) => showMsg(e.message, true));
+    }
     if (busy) return;
     if (act === 'toggle') return setWanted(!wanted);
     if (act === 'restart') {
       setBusy(true);
-      showMsg('Restarting Opera GX… your tabs will come back.');
+      showMsg(`Restarting ${browserName}… your tabs will come back.`);
       try {
         await send('applyAndRestart', { enabled: wanted });
       } catch (e) {

@@ -18,3 +18,22 @@ test('host name matches between extension and helper', () => {
   const ps = read('../native-host/common.ps1').match(/AccelHostName = '([^']+)'/)[1];
   assert.equal(ext, ps);
 });
+
+test('Firefox add-on ID matches the helper and installer', () => {
+  const manifest = JSON.parse(read('../extension/manifest.json'));
+  const id = manifest.browser_specific_settings.gecko.id;
+  assert.match(read('../native-host/install.ps1'), new RegExp(`\\$FirefoxExtensionId = '${id}'`));
+  assert.match(read('../native-host/common.ps1'), new RegExp(`FirefoxExtensionId = '${id}'`));
+});
+
+test('manifest has a background entry for both engines', () => {
+  const { background } = JSON.parse(read('../extension/manifest.json'));
+  assert.equal(background.service_worker, 'background.js');
+  assert.deepEqual(background.scripts, ['background.js']);
+});
+
+test('extension code uses the shared API namespace', () => {
+  for (const f of ['background.js', 'lib/native.js', 'popup/popup.js', 'options/options.js']) {
+    assert.doesNotMatch(read(`../extension/${f}`), /\bchrome\.(runtime|storage|tabs|windows|alarms|notifications|scripting|permissions)\b/, f);
+  }
+});

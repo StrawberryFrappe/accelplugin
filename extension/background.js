@@ -1,3 +1,5 @@
+import { ext } from './lib/ext.js';
+import { BROWSERS, currentBrowser, currentBrowserName } from './lib/browser.js';
 import { matchDomain } from './lib/domains.js';
 import { autoEnableStatus, sanitizeSettings } from './lib/policy.js';
 import { getState, applyAndRestart, HelperError } from './lib/native.js';
@@ -6,12 +8,13 @@ const ALARM_TICK = 'tick';
 const ALARM_WARN = 'autoEnableWarning';
 const ALARM_REFRESH = 'refreshState';
 const NOTIFICATION_ID = 'autoEnable';
+const NOTIFICATION_BUTTONS = currentBrowser !== 'firefox';
 // How long after a restart we still consider it "ours" (for the tab safety net).
 const RESTART_WINDOW_MS = 5 * 60_000;
-// If Opera is still running this long after we asked for a restart, assume it failed.
+// If the browser is still running this long after we asked for a restart, assume it failed.
 const RESTART_STUCK_MS = 2 * 60_000;
 
-// chrome.storage.local keys:
+// ext.storage.local keys:
 //   settings             user settings (see lib/policy.js)
 //   hw                   { enabled, pending, helper: 'ok'|'missing'|'error'|'unknown', error, checkedAt }
 //   lastWatchedActiveAt  ms timestamp a watched site was last the active tab
@@ -19,7 +22,7 @@ const RESTART_STUCK_MS = 2 * 60_000;
 //   warning              { at, deadline } while the "restarting soon" notification is up
 //   restart              { target, at, reason, snapshot } while a restart we started is in flight
 //   lastRestart          the same record, kept briefly after startup for the tab safety net
-// chrome.storage.session keys (cleared when the browser restarts):
+// ext.storage.session keys (cleared when the browser restarts):
 //   promptedTabs         { [tabId]: domain } tabs already prompted during this visit
 //   snoozed              true after "Not now"
 
@@ -37,12 +40,12 @@ function serialized(fn) {
 }
 
 async function loadSettings() {
-  const { settings } = await chrome.storage.local.get('settings');
+  const { settings } = await ext.storage.local.get('settings');
   return sanitizeSettings(settings);
 }
 
 async function loadHw() {
-  const { hw } = await chrome.storage.local.get('hw');
+  const { hw } = await ext.storage.local.get('hw');
   return hw || { enabled: null, pending: null, helper: 'unknown', error: null, checkedAt: 0 };
 }
 
@@ -51,28 +54,28 @@ async function refreshHwState() {
   let hw;
   try {
     const s = await getState();
-    hw = { enabled: s.running, pending: s.pending, helper: 'ok', error: null, checkedAt: Date.now() };
+    hw = { enabled: s.running, pending: s.pending, helper: 'ok', error: null, warning: s.warning || null, checkedAt: Date.now() };
   } catch (e) {
     const helper = e instanceof HelperError ? e.code : 'error';
     hw = { ...prev, helper, error: e.message, checkedAt: Date.now() };
   }
   if (hw.enabled === false && prev.enabled !== false) {
     // Acceleration just turned off: start the inactivity clock now.
-    await chrome.storage.local.set({ lastWatchedActiveAt: Date.now(), postponedUntil: 0 });
+    await ext.storage.local.set({ lastWatchedActiveAt: Date.now(), postponedUntil: 0 });
   }
-  await chrome.storage.local.set({ hw });
+  await ext.storage.local.set({ hw });
   return hw;
 }
 
 async function activeWatchedTab(domains) {
-  const tabs = await chrome.tabs.query({ active: true });
+  const tabs = await ext.tabs.query({ active: true });
   return tabs.find((t) => matchDomain(t.url || t.pendingUrl, domains)) || null;
 }
 
 // ---------------------------------------------------------------- restart
 
 async function snapshotTabs() {
-  const windows = await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] });
+  const windows = await ext.windows.getAll({ populate: true, windowTypes: ['normal'] });
   return windows.map((w) => w.tabs.map((t) => t.url || t.pendingUrl).filter(isRestorableUrl));
 }
 
@@ -88,17 +91,17 @@ async function restartWith(enabled, reason) {
   setTimeout(() => (restartInFlight = false), RESTART_STUCK_MS);
   await clearWarning();
   const snapshot = await snapshotTabs();
-  await chrome.storage.local.set({ restart: { target: enabled, at: Date.now(), reason, snapshot } });
+  await ext.storage.local.set({ restart: { target: enabled, at: Date.now(), reason, snapshot } });
   try {
     await applyAndRestart(enabled);
   } catch (e) {
     restartInFlight = false;
-    await chrome.storage.local.remove('restart');
+    await ext.storage.local.remove('restart');
     throw e;
   }
 }
 
-/** After a restart we triggered, reopen any tabs Opera's own session restore missed. */
+/** After a restart we triggered, reopen any tabs the browser's own session restore missed. */
 async function restoreMissingTabs(restart) {
   const current = (await snapshotTabs()).flat();
   const counts = new Map();
@@ -111,7 +114,7 @@ async function restoreMissingTabs(restart) {
   }
   if (!missing.length) return;
   console.info('[accelplugin] reopening tabs missed by session restore:', missing);
-  for (const url of missing) await chrome.tabs.create({ url, active: false });
+  for (const url of missing) await ext.tabs.create({ url, active: false });
 }
 
 // ---------------------------------------------------------------- auto re-enable
@@ -122,19 +125,19 @@ const evaluate = serialized(async () => {
   const now = Date.now();
   const watched = await activeWatchedTab(settings.domains);
   if (watched) {
-    await chrome.storage.local.set({ lastWatchedActiveAt: now });
+    await ext.storage.local.set({ lastWatchedActiveAt: now });
     await clearWarning();
     return;
   }
-  const { lastWatchedActiveAt, postponedUntil, warning, restart } = await chrome.storage.local.get([
+  const { lastWatchedActiveAt, postponedUntil, warning, restart } = await ext.storage.local.get([
     'lastWatchedActiveAt',
     'postponedUntil',
     'warning',
     'restart',
   ]);
   if (restart && now - restart.at > RESTART_STUCK_MS) {
-    // The helper accepted the request but Opera never restarted; unblock.
-    await chrome.storage.local.remove('restart');
+    // The helper accepted the request but the browser never restarted; unblock.
+    await ext.storage.local.remove('restart');
   } else if (restart) return;
   if (warning || hw.helper !== 'ok') return;
   const status = autoEnableStatus({
@@ -152,31 +155,34 @@ const evaluate = serialized(async () => {
 
 async function showWarning(seconds) {
   const deadline = Date.now() + seconds * 1000;
-  await chrome.storage.local.set({ warning: { at: Date.now(), deadline } });
-  await chrome.alarms.create(ALARM_WARN, { when: deadline });
-  await chrome.notifications.create(NOTIFICATION_ID, {
+  await ext.storage.local.set({ warning: { at: Date.now(), deadline } });
+  await ext.alarms.create(ALARM_WARN, { when: deadline });
+  const message = `${currentBrowserName} will restart in ${seconds} seconds. Your tabs will be restored.`;
+  // Firefox rejects notifications with buttons, so there a click on the notification postpones.
+  const options = NOTIFICATION_BUTTONS
+    ? { message, buttons: [{ title: 'Restart now' }, { title: 'Postpone' }], requireInteraction: true }
+    : { message: `${message} Click here to postpone.` };
+  await ext.notifications.create(NOTIFICATION_ID, {
     type: 'basic',
     iconUrl: 'icons/128.png',
     title: 'Turning hardware acceleration back on',
-    message: `Opera GX will restart in ${seconds} seconds. Your tabs will be restored.`,
-    buttons: [{ title: 'Restart now' }, { title: 'Postpone' }],
-    requireInteraction: true,
     priority: 2,
+    ...options,
   });
 }
 
 async function clearWarning() {
-  const { warning } = await chrome.storage.local.get('warning');
+  const { warning } = await ext.storage.local.get('warning');
   if (!warning) return;
-  await chrome.storage.local.remove('warning');
-  await chrome.alarms.clear(ALARM_WARN);
-  await chrome.notifications.clear(NOTIFICATION_ID);
+  await ext.storage.local.remove('warning');
+  await ext.alarms.clear(ALARM_WARN);
+  await ext.notifications.clear(NOTIFICATION_ID);
 }
 
 async function postpone() {
   const settings = await loadSettings();
   await clearWarning();
-  await chrome.storage.local.set({ postponedUntil: Date.now() + settings.timeoutMinutes * 60_000 });
+  await ext.storage.local.set({ postponedUntil: Date.now() + settings.timeoutMinutes * 60_000 });
 }
 
 const autoRestart = serialized(() => doAutoRestart());
@@ -187,7 +193,7 @@ async function doAutoRestart() {
   const hw = await loadHw();
   if (hw.enabled !== false || !settings.autoEnable) return clearWarning();
   if (await activeWatchedTab(settings.domains)) {
-    await chrome.storage.local.set({ lastWatchedActiveAt: Date.now() });
+    await ext.storage.local.set({ lastWatchedActiveAt: Date.now() });
     return clearWarning();
   }
   try {
@@ -205,12 +211,12 @@ async function doAutoRestart() {
 async function maybePrompt(tabId, url) {
   const settings = await loadSettings();
   const domain = matchDomain(url, settings.domains);
-  const { promptedTabs = {}, snoozed } = await chrome.storage.session.get(['promptedTabs', 'snoozed']);
+  const { promptedTabs = {}, snoozed } = await ext.storage.session.get(['promptedTabs', 'snoozed']);
 
   if (!domain) {
     if (promptedTabs[tabId]) {
       delete promptedTabs[tabId];
-      await chrome.storage.session.set({ promptedTabs });
+      await ext.storage.session.set({ promptedTabs });
     }
     return;
   }
@@ -219,9 +225,9 @@ async function maybePrompt(tabId, url) {
   if (hw.enabled === false) return; // already off, nothing to ask
 
   promptedTabs[tabId] = domain;
-  await chrome.storage.session.set({ promptedTabs });
+  await ext.storage.session.set({ promptedTabs });
   try {
-    await chrome.scripting.executeScript({ target: { tabId }, files: ['content/banner.js'] });
+    await ext.scripting.executeScript({ target: { tabId }, files: ['content/banner.js'] });
   } catch (e) {
     console.warn(`[accelplugin] could not show banner on ${domain} (missing site permission?)`, e);
   }
@@ -230,22 +236,24 @@ async function maybePrompt(tabId, url) {
 async function forgetPromptIfLeft(tabId, url) {
   const settings = await loadSettings();
   if (matchDomain(url, settings.domains)) return;
-  const { promptedTabs = {} } = await chrome.storage.session.get('promptedTabs');
+  const { promptedTabs = {} } = await ext.storage.session.get('promptedTabs');
   if (!promptedTabs[tabId]) return;
   delete promptedTabs[tabId];
-  await chrome.storage.session.set({ promptedTabs });
+  await ext.storage.session.set({ promptedTabs });
 }
 
+/** Opens the browser's own hardware acceleration setting, or returns how to find it by hand. */
 async function openSetting() {
-  // Opera accepts chrome:// as an alias of opera://.
-  for (const url of ['opera://settings/?search=hardware%20acceleration', 'chrome://settings/?search=hardware%20acceleration']) {
+  const { settingsUrls, manualHint } = BROWSERS[currentBrowser];
+  for (const url of settingsUrls) {
     try {
-      await chrome.tabs.create({ url });
-      return;
+      await ext.tabs.create({ url });
+      return { opened: true };
     } catch {
       /* try next */
     }
   }
+  return { opened: false, hint: manualHint || 'Open the browser settings and search for "hardware acceleration".' };
 }
 
 async function getStatus() {
@@ -253,7 +261,7 @@ async function getStatus() {
   const hw = await loadHw();
   const now = Date.now();
   const watched = await activeWatchedTab(settings.domains);
-  const { lastWatchedActiveAt, postponedUntil, warning, restart } = await chrome.storage.local.get([
+  const { lastWatchedActiveAt, postponedUntil, warning, restart } = await ext.storage.local.get([
     'lastWatchedActiveAt',
     'postponedUntil',
     'warning',
@@ -267,7 +275,7 @@ async function getStatus() {
     now,
     settings,
   });
-  return { hw, settings, auto, warning: warning || null, restarting: !!restart, watchedDomain: watched ? matchDomain(watched.url || watched.pendingUrl, settings.domains) : null };
+  return { browser: currentBrowser, browserName: currentBrowserName, hw, settings, auto, warning: warning || null, restarting: !!restart, watchedDomain: watched ? matchDomain(watched.url || watched.pendingUrl, settings.domains) : null };
 }
 
 const handlers = {
@@ -285,12 +293,9 @@ const handlers = {
     await refreshHwState();
     return res;
   },
-  openSetting: async () => {
-    await openSetting();
-    return { ok: true };
-  },
+  openSetting: () => openSetting(),
   snooze: async () => {
-    await chrome.storage.session.set({ snoozed: true });
+    await ext.storage.session.set({ snoozed: true });
     return { ok: true };
   },
   postpone: async () => {
@@ -299,7 +304,7 @@ const handlers = {
   },
 };
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+ext.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   const handler = handlers[msg?.type];
   if (!handler) return false;
   handler(msg)
@@ -311,14 +316,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 // ---------------------------------------------------------------- lifecycle
 
 async function init(reason) {
-  await chrome.alarms.create(ALARM_TICK, { periodInMinutes: 1 });
-  const { restart } = await chrome.storage.local.get('restart');
-  await chrome.storage.local.remove(['restart', 'warning']);
+  await ext.alarms.create(ALARM_TICK, { periodInMinutes: 1 });
+  const { restart } = await ext.storage.local.get('restart');
+  await ext.storage.local.remove(['restart', 'warning']);
   if (reason === 'startup' && restart && Date.now() - restart.at < RESTART_WINDOW_MS) {
     // We just restarted ourselves: trust the target value until the helper confirms,
     // and keep the tab snapshot for the safety-net check below.
     const hw = await loadHw();
-    await chrome.storage.local.set({
+    await ext.storage.local.set({
       hw: { ...hw, enabled: restart.target, pending: restart.target, checkedAt: Date.now() },
       lastWatchedActiveAt: Date.now(),
       postponedUntil: 0,
@@ -328,22 +333,22 @@ async function init(reason) {
     await refreshHwState();
   }
   // Local State is written lazily after startup, so check again shortly.
-  await chrome.alarms.create(ALARM_REFRESH, { delayInMinutes: 0.5 });
+  await ext.alarms.create(ALARM_REFRESH, { delayInMinutes: 0.5 });
 }
 
-chrome.runtime.onStartup.addListener(() => init('startup'));
-chrome.runtime.onInstalled.addListener(async ({ reason }) => {
-  if (reason === 'install') await chrome.storage.local.set({ settings: sanitizeSettings() });
+ext.runtime.onStartup.addListener(() => init('startup'));
+ext.runtime.onInstalled.addListener(async ({ reason }) => {
+  if (reason === 'install') await ext.storage.local.set({ settings: sanitizeSettings() });
   await init(reason);
 });
 
-chrome.alarms.onAlarm.addListener(async (alarm) => {
+ext.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === ALARM_TICK) await evaluate();
   else if (alarm.name === ALARM_WARN) await autoRestart();
   else if (alarm.name === ALARM_REFRESH) {
-    const { lastRestart } = await chrome.storage.local.get('lastRestart');
+    const { lastRestart } = await ext.storage.local.get('lastRestart');
     if (lastRestart) {
-      await chrome.storage.local.remove('lastRestart');
+      await ext.storage.local.remove('lastRestart');
       if (Date.now() - lastRestart.at < RESTART_WINDOW_MS) await restoreMissingTabs(lastRestart);
     }
     await refreshHwState();
@@ -351,24 +356,27 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
 });
 
-chrome.notifications.onButtonClicked.addListener(async (id, index) => {
+ext.notifications.onButtonClicked?.addListener(async (id, index) => {
   if (id !== NOTIFICATION_ID) return;
   if (index === 0) await autoRestart();
   else await postpone();
 });
+ext.notifications.onClicked.addListener(async (id) => {
+  if (id === NOTIFICATION_ID && !NOTIFICATION_BUTTONS) await postpone();
+});
 
-chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+ext.tabs.onUpdated.addListener((tabId, info, tab) => {
   // Prompt once the page has loaded; a bare URL change only matters for leaving a watched site.
   if (info.status === 'complete') maybePrompt(tabId, tab.url).catch(console.error);
   else if (info.url) forgetPromptIfLeft(tabId, info.url).catch(console.error);
   if ((info.status === 'complete' || info.url) && tab.active) evaluate().catch(console.error);
 });
-chrome.tabs.onActivated.addListener(() => evaluate().catch(console.error));
-chrome.windows.onFocusChanged.addListener(() => evaluate().catch(console.error));
-chrome.tabs.onRemoved.addListener(async (tabId) => {
-  const { promptedTabs = {} } = await chrome.storage.session.get('promptedTabs');
+ext.tabs.onActivated.addListener(() => evaluate().catch(console.error));
+ext.windows.onFocusChanged.addListener(() => evaluate().catch(console.error));
+ext.tabs.onRemoved.addListener(async (tabId) => {
+  const { promptedTabs = {} } = await ext.storage.session.get('promptedTabs');
   if (promptedTabs[tabId]) {
     delete promptedTabs[tabId];
-    await chrome.storage.session.set({ promptedTabs });
+    await ext.storage.session.set({ promptedTabs });
   }
 });

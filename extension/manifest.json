@@ -2,25 +2,60 @@
   "manifest_version": 3,
   "name": "HW Accel Toggler",
   "short_name": "HW Accel",
-  "version": "1.0.0",
-  "description": "Prompts you to turn off hardware acceleration on streaming sites and turns it back on when you're done.",
+  "version": "1.1.0",
+  "description": "Prompts you to turn off hardware acceleration on streaming sites and turns it back on when you're done. Opera GX, Chrome, Brave and Firefox.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArayPhwsrNACujTH24dhu72/dU85LTUTiNRkFfLdSiz7/MU9XftJet+xKVUkjbpT6xpvDxbT7IpGOqowFSRST3vdwnONIYkt8L5Ljf70Lfb4vUQQvDOo9UZ+UIWMTp4WDcukVHF8PF0hoj09/RU4W1+nF4KxjWu1YYUCmBSa7o4OraAibe1p58dVeW0iYgfe6JSDQROus4JghrA+H8slH7mwagvj6csEUCTLtcRX5ZJdVZIMCfvRbkVc6ZS0p5bcQa6+/+s/YLbIai0PN3WGS7Tgrmx2bJpDD8rjzH3VoYMuY7AlsnkQTyUXkiiBDc/BO09A0ES7hGtD5l1EUZbF1mwIDAQAB",
   "minimum_chrome_version": "116",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "hw-accel-toggler@accelplugin",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
+  },
   "background": {
     "service_worker": "background.js",
+    "scripts": [
+      "background.js"
+    ],
     "type": "module"
   },
-  "permissions": ["tabs", "storage", "alarms", "nativeMessaging", "notifications", "scripting"],
-  "host_permissions": ["*://*.netflix.com/*", "*://*.crunchyroll.com/*"],
-  "optional_host_permissions": ["*://*/*"],
+  "permissions": [
+    "tabs",
+    "storage",
+    "alarms",
+    "nativeMessaging",
+    "notifications",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://*.netflix.com/*",
+    "*://*.crunchyroll.com/*"
+  ],
+  "optional_host_permissions": [
+    "*://*/*"
+  ],
   "action": {
     "default_title": "HW Accel Toggler",
     "default_popup": "popup/popup.html",
-    "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png" }
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "48": "icons/48.png"
+    }
   },
   "options_ui": {
     "page": "options/options.html",
     "open_in_tab": true
   },
-  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" }
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
 }
