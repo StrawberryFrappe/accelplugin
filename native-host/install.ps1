@@ -14,12 +14,14 @@ Write-Host 'HW Accel Toggler - helper setup' -ForegroundColor Cyan
 # Files extracted from a downloaded zip are marked as "from the internet".
 Get-ChildItem -Path $PSScriptRoot -File | Unblock-File -ErrorAction SilentlyContinue
 
-if (-not $InstallDir) { $InstallDir = Find-GxInstallDir }
-while (-not ($InstallDir -and (Test-Path (Join-Path $InstallDir 'launcher.exe')))) {
+$InstallDir = if ($InstallDir) { Resolve-GxInstallDir $InstallDir } else { Find-GxInstallDir }
+while (-not $InstallDir) {
     Write-Warning 'Could not find Opera GX automatically.'
-    $InstallDir = (Read-Host 'Paste the Opera GX folder that contains launcher.exe').Trim('"', ' ')
+    $answer = Read-Host 'Paste the Opera GX folder that contains opera.exe (or the full path to opera.exe)'
+    $InstallDir = Resolve-GxInstallDir $answer
 }
 Write-Host "Opera GX:     $InstallDir"
+Write-Host "Relaunches:   $(Get-GxLauncher $InstallDir)"
 
 if (-not $LocalState) { $LocalState = Get-DefaultLocalStatePath }
 while (-not (Test-Path -LiteralPath $LocalState)) {

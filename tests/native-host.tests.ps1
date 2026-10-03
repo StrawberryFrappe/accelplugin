@@ -56,11 +56,30 @@ try {
     $threw = $false; try { Set-HwAccelInFile $ls $false } catch { $threw = $true }
     Check 'file: invalid file left untouched' ($threw -and (Get-Content -Raw $ls) -eq 'not json')
 
+    # --- install folder detection (layout from a real Opera GX 136 install) ---------
+    $gx = Join-Path $tmp 'Opera GX'
+    foreach ($d in '136.0.6008.67', '136.0.6008.76', '130.0.5847.89', 'autoupdate') { New-Item -ItemType Directory -Path (Join-Path $gx $d) | Out-Null }
+    foreach ($f in 'opera.exe', '136.0.6008.67/opera.exe', '136.0.6008.76/opera.exe', '130.0.5847.89/debug.log') { Set-Content -Path (Join-Path $gx $f) -Value 'x' }
+    $sep = [System.IO.Path]::DirectorySeparatorChar
+    Check 'resolve: install folder' ((Resolve-GxInstallDir $gx) -eq $gx)
+    Check 'resolve: opera.exe in install folder' ((Resolve-GxInstallDir (Join-Path $gx 'opera.exe')) -eq $gx)
+    Check 'resolve: versioned folder -> install folder' ((Resolve-GxInstallDir (Join-Path $gx '136.0.6008.76')) -eq $gx)
+    Check 'resolve: versioned opera.exe -> install folder' ((Resolve-GxInstallDir (Join-Path $gx '136.0.6008.67/opera.exe')) -eq $gx)
+    Check 'resolve: quotes and trailing separator' ((Resolve-GxInstallDir ('  "' + $gx + $sep + '" ')) -eq $gx)
+    Check 'resolve: folder without exe' ($null -eq (Resolve-GxInstallDir (Join-Path $gx 'autoupdate')))
+    Check 'resolve: missing path' ($null -eq (Resolve-GxInstallDir (Join-Path $tmp 'nope')))
+    Check 'resolve: empty' ($null -eq (Resolve-GxInstallDir ''))
+    Check 'launcher: opera.exe in install folder' ((Get-GxLauncher $gx) -eq (Join-Path $gx 'opera.exe'))
+    $old = Join-Path $tmp 'Old GX'
+    New-Item -ItemType Directory -Path $old | Out-Null
+    Set-Content -Path (Join-Path $old 'launcher.exe') -Value 'x'; Set-Content -Path (Join-Path $old 'opera.exe') -Value 'x'
+    Check 'launcher: launcher.exe preferred on older installs' ((Get-GxLauncher $old) -eq (Join-Path $old 'launcher.exe'))
+
     # --- host.ps1 protocol: getState --------------------------------------------
     [System.IO.File]::WriteAllText($ls, $cases[2].text, $script:Utf8NoBom)
     $hostDir = Join-Path $tmp 'host'
     Copy-Item (Join-Path $root 'native-host') $hostDir -Recurse
-    [System.IO.File]::WriteAllText((Join-Path $hostDir 'config.json'), (@{ installDir = $tmp; localState = $ls } | ConvertTo-Json), $script:Utf8NoBom)
+    [System.IO.File]::WriteAllText((Join-Path $hostDir 'config.json'), (@{ installDir = (Join-Path $gx '136.0.6008.76'); localState = $ls } | ConvertTo-Json), $script:Utf8NoBom)
 
     function Invoke-Host([string]$Json) {
         $body = [System.Text.Encoding]::UTF8.GetBytes($Json)

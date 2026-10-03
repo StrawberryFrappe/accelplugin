@@ -29,7 +29,7 @@ It uses only Windows' built-in PowerShell, needs no admin rights, and never touc
    1. In Opera GX, open `opera://extensions` and switch on **Developer mode** (top right).
    2. Click **Load unpacked** and choose the `extension` folder.
    3. Check that the extension ID is `lbheolnljihmphgebojmlbifcfmchhnk`. It's fixed by the `key` in `manifest.json`.
-3. **Install the helper:** with Opera GX open, double-click `native-host\install.bat`. It finds Opera GX and its `Local State`, and asks you if it can't.
+3. **Install the helper:** with Opera GX open, double-click `native-host\install.bat`. It finds Opera GX (normally `%LOCALAPPDATA%\Programs\Opera GX\opera.exe`) and its `Local State`. If it can't, it asks you for the folder that contains `opera.exe`.
 4. **Restart Opera GX** once, so it picks up the helper.
 5. Open the extension's **Settings** (right-click its icon → Options) and click **Test helper**. It should say *Installed* and show your current state. The test changes nothing.
 

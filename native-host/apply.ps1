@@ -52,7 +52,7 @@ try {
 } finally {
     # Always bring Opera GX back, even if the edit failed.
     if ($launcher -and -not (Get-GxBrowserProcesses $InstallDir)) {
-        Start-Process -FilePath $launcher -ArgumentList '--restore-last-session'
+        Start-Process -FilePath $launcher -ArgumentList '--restore-last-session' -WorkingDirectory (Split-Path -Parent $launcher)
         Write-AccelLog "worker: relaunched '$launcher'"
     }
     $mutex.ReleaseMutex()

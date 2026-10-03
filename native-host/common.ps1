@@ -26,7 +26,7 @@ function Get-AccelConfig {
     $path = Join-Path $PSScriptRoot 'config.json'
     if (Test-Path $path) {
         $saved = [System.IO.File]::ReadAllText($path) | ConvertFrom-Json
-        if ($saved.installDir) { $cfg.installDir = $saved.installDir }
+        if ($saved.installDir) { $cfg.installDir = Resolve-GxInstallDir $saved.installDir }
         if ($saved.localState) { $cfg.localState = $saved.localState }
     }
     if (-not $cfg.localState) { $cfg.localState = Get-DefaultLocalStatePath }
@@ -34,34 +34,54 @@ function Get-AccelConfig {
     return $cfg
 }
 
-# Opera GX ships launcher.exe in the install folder and the real browser in a versioned subfolder.
+# Opera GX runs from opera.exe in its install folder (older installs used launcher.exe).
+# Each update also leaves versioned subfolders (e.g. 136.0.6008.76\) holding another opera.exe;
+# those change with every update, so we always resolve to the install folder above them.
+function Test-GxInstallDir([string]$Dir) {
+    return (Test-Path -LiteralPath (Join-Path $Dir 'opera.exe')) -or (Test-Path -LiteralPath (Join-Path $Dir 'launcher.exe'))
+}
+
+# Accepts the install folder, a versioned subfolder, or the path to an exe in either (quotes
+# and trailing slashes allowed). Returns the stable install folder, or $null.
+function Resolve-GxInstallDir([string]$Path) {
+    if (-not $Path) { return $null }
+    $p = $Path.Trim().Trim('"').Trim().TrimEnd('\', '/')
+    if (-not $p) { return $null }
+    if (Test-Path -LiteralPath $p -PathType Leaf) { $p = Split-Path -Parent $p }
+    if (-not (Test-Path -LiteralPath $p -PathType Container)) { return $null }
+    if ((Split-Path -Leaf $p) -match '^\d+(\.\d+)+$') {
+        $parent = Split-Path -Parent $p
+        if ($parent -and (Test-GxInstallDir $parent)) { return $parent }
+    }
+    if (Test-GxInstallDir $p) { return $p }
+    return $null
+}
+
 function Find-GxInstallDir {
     $candidates = New-Object System.Collections.Generic.List[string]
     foreach ($p in Get-GxProcesses) {
-        if ($p.ExecutablePath) {
-            $dir = Split-Path -Parent $p.ExecutablePath
-            $candidates.Add($dir)
-            $candidates.Add((Split-Path -Parent $dir))
-        }
+        if ($p.ExecutablePath) { $candidates.Add($p.ExecutablePath) }
     }
     foreach ($key in 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
                      'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
                      'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*') {
         Get-ItemProperty $key -ErrorAction SilentlyContinue |
             Where-Object { $_.DisplayName -like 'Opera GX*' -and $_.InstallLocation } |
-            ForEach-Object { $candidates.Add($_.InstallLocation.TrimEnd('\')) }
+            ForEach-Object { $candidates.Add($_.InstallLocation) }
     }
     if ($env:LOCALAPPDATA) { $candidates.Add((Join-Path $env:LOCALAPPDATA 'Programs\Opera GX')) }
     if ($env:ProgramFiles) { $candidates.Add((Join-Path $env:ProgramFiles 'Opera GX')) }
-    foreach ($dir in $candidates) {
-        if ($dir -and (Test-Path (Join-Path $dir 'launcher.exe'))) { return $dir }
+    foreach ($c in $candidates) {
+        $dir = Resolve-GxInstallDir $c
+        if ($dir) { return $dir }
     }
     return $null
 }
 
 # All opera.exe processes belonging to Opera GX (never regular Opera).
 function Get-GxProcesses([string]$InstallDir) {
-    $all = @(Get-CimInstance Win32_Process -Filter "Name = 'opera.exe'" -ErrorAction SilentlyContinue)
+    $all = @()
+    try { $all = @(Get-CimInstance Win32_Process -Filter "Name = 'opera.exe'" -ErrorAction Stop) } catch { }
     if ($InstallDir) {
         $prefix = $InstallDir.TrimEnd('\') + '\'
         return @($all | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) })
